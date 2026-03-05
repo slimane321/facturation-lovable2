@@ -1,0 +1,361 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Moroccan Green – inspired by the flag and zellige tiles */
+    --background: 150 20% 97%;
+    --foreground: 145 40% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 145 40% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 145 40% 10%;
+
+    /* Deep Moroccan Green */
+    --primary: 145 63% 22%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Gold accent */
+    --gold: 43 96% 48%;
+    --gold-light: 43 96% 92%;
+    --gold-foreground: 43 80% 15%;
+
+    --secondary: 145 20% 92%;
+    --secondary-foreground: 145 63% 18%;
+
+    --muted: 150 15% 94%;
+    --muted-foreground: 145 20% 45%;
+
+    --accent: 43 96% 48%;
+    --accent-foreground: 43 80% 15%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 145 15% 88%;
+    --input: 145 15% 88%;
+    --ring: 145 63% 22%;
+
+    --radius: 0.75rem;
+
+    /* Sidebar – dark green */
+    --sidebar-background: 145 63% 14%;
+    --sidebar-foreground: 145 20% 88%;
+    --sidebar-primary: 43 96% 52%;
+    --sidebar-primary-foreground: 43 80% 12%;
+    --sidebar-accent: 145 50% 20%;
+    --sidebar-accent-foreground: 145 10% 90%;
+    --sidebar-border: 145 40% 18%;
+    --sidebar-ring: 43 96% 48%;
+
+    /* Status colors */
+    --status-paid: 145 55% 35%;
+    --status-paid-bg: 145 55% 92%;
+    --status-pending: 43 96% 45%;
+    --status-pending-bg: 43 96% 93%;
+    --status-cancelled: 0 72% 51%;
+    --status-cancelled-bg: 0 72% 94%;
+
+    /* Invoice surface */
+    --invoice-bg: 0 0% 100%;
+    --invoice-border: 145 15% 85%;
+    --invoice-header: 145 63% 22%;
+  }
+
+  .dark {
+    --background: 145 40% 6%;
+    --foreground: 145 10% 93%;
+    --card: 145 35% 9%;
+    --card-foreground: 145 10% 93%;
+    --popover: 145 35% 9%;
+    --popover-foreground: 145 10% 93%;
+    --primary: 145 55% 35%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 145 25% 14%;
+    --secondary-foreground: 145 10% 90%;
+    --muted: 145 25% 14%;
+    --muted-foreground: 145 15% 55%;
+    --accent: 43 80% 42%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 145 25% 18%;
+    --input: 145 25% 18%;
+    --ring: 145 55% 35%;
+    --sidebar-background: 145 40% 5%;
+    --sidebar-foreground: 145 15% 80%;
+    --sidebar-primary: 43 80% 48%;
+    --sidebar-primary-foreground: 0 0% 8%;
+    --sidebar-accent: 145 30% 12%;
+    --sidebar-accent-foreground: 145 10% 88%;
+    --sidebar-border: 145 30% 10%;
+    --sidebar-ring: 43 80% 48%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  [dir="rtl"] body,
+  [dir="rtl"] {
+    font-family: 'IBM Plex Sans Arabic', 'Inter', sans-serif;
+  }
+}
+
+@layer components {
+  /* Moroccan geometric border accent */
+  .moroccan-accent-border {
+    border-bottom: 3px solid hsl(var(--gold));
+  }
+
+  .moroccan-pattern {
+    background-image: 
+      repeating-linear-gradient(
+        45deg,
+        hsl(var(--primary) / 0.03) 0px,
+        hsl(var(--primary) / 0.03) 1px,
+        transparent 1px,
+        transparent 10px
+      ),
+      repeating-linear-gradient(
+        -45deg,
+        hsl(var(--primary) / 0.03) 0px,
+        hsl(var(--primary) / 0.03) 1px,
+        transparent 1px,
+        transparent 10px
+      );
+  }
+
+  /* Stat cards */
+  .stat-card {
+    @apply bg-card rounded-xl border shadow-sm p-6 transition-all duration-200 hover:shadow-md;
+  }
+
+  /* Invoice line */
+  .invoice-line {
+    @apply grid gap-2 p-3 rounded-lg bg-muted/50 border border-border/50;
+  }
+
+  /* Badge status */
+  .badge-paid {
+    background: hsl(var(--status-paid-bg));
+    color: hsl(var(--status-paid));
+    @apply text-xs font-semibold px-2.5 py-1 rounded-full;
+  }
+  .badge-pending {
+    background: hsl(var(--status-pending-bg));
+    color: hsl(var(--status-pending));
+    @apply text-xs font-semibold px-2.5 py-1 rounded-full;
+  }
+  .badge-validated {
+    @apply text-xs font-semibold px-2.5 py-1 rounded-full;
+    background: hsl(145 55% 92%);
+    color: hsl(145 63% 22%);
+  }
+  .badge-avoir {
+    @apply text-xs font-semibold px-2.5 py-1 rounded-full;
+    background: hsl(265 60% 92%);
+    color: hsl(265 60% 30%);
+  }
+
+  /* Sidebar nav link active */
+  .nav-active {
+    background: hsl(var(--sidebar-primary));
+    color: hsl(var(--sidebar-primary-foreground));
+  }
+
+  /* Scroll elegant */
+  .scroll-area {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+
+  /* Invoice print surface */
+  .invoice-surface {
+    @apply bg-white rounded-2xl shadow-xl border;
+  }
+
+  .invoice-header-band {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
+
+  .gold-accent-line {
+    height: 4px;
+    background: linear-gradient(90deg, hsl(var(--gold)), hsl(var(--gold) / 0.3));
+    border-radius: 2px;
+  }
+}
+
+/* Print styles */
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
+  html, body {
+    height: auto;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    font-size: 10pt;
+  }
+
+  /* Hide everything by default */
+  body > * {
+    visibility: hidden;
+  }
+
+  /* Hide sidebar, toolbar, payment bar, payment history, timeline, modals, dialogs */
+  .no-print,
+  nav,
+  aside,
+  header,
+  [data-sidebar],
+  [role="dialog"],
+  button,
+  .no-print-bar {
+    display: none !important;
+  }
+
+  /* Make the invoice visible and full-width */
+  .invoice-surface {
+    visibility: visible !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 210mm !important;
+    max-width: 210mm !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    page-break-inside: avoid;
+    overflow: hidden !important;
+  }
+
+  /* Ensure all children inside invoice are visible */
+  .invoice-surface * {
+    visibility: visible !important;
+  }
+
+  /* Ensure parent containers are visible */
+  .invoice-surface,
+  .invoice-surface ~ *,
+  body,
+  #root,
+  #root > *,
+  #root > * > *,
+  #root > * > * > * {
+    visibility: visible;
+    overflow: visible !important;
+  }
+
+  /* Compact header */
+  .invoice-header-band {
+    padding: 12px 20px !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .invoice-header-band p.text-2xl,
+  .invoice-header-band p.text-3xl {
+    font-size: 16pt !important;
+  }
+  .invoice-header-band p.text-xl {
+    font-size: 12pt !important;
+  }
+  .invoice-header-band img {
+    height: 40px !important;
+  }
+
+  /* Compact client block */
+  .invoice-surface > div:nth-child(3) {
+    padding: 8px 20px !important;
+  }
+
+  /* Compact table */
+  .invoice-surface table {
+    font-size: 9pt !important;
+  }
+  .invoice-surface table th {
+    padding: 4px 8px !important;
+    font-size: 8pt !important;
+  }
+  .invoice-surface table td {
+    padding: 3px 8px !important;
+  }
+  .invoice-surface .px-8 {
+    padding-left: 20px !important;
+    padding-right: 20px !important;
+  }
+
+  /* Compact totals */
+  .invoice-surface .py-6 {
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+  }
+  .invoice-surface .py-5 {
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+  }
+
+  /* Gold accent line */
+  .gold-accent-line {
+    height: 3px !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Force background colors on table headers */
+  tr.bg-muted\/20,
+  tr.bg-primary,
+  thead tr {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Compact footer */
+  .invoice-surface > div:last-child {
+    padding: 8px 20px !important;
+    font-size: 8pt !important;
+  }
+
+  /* Ensure digital seal & hash section is visible in print */
+  .invoice-surface .print\\:break-inside-avoid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Force hash/signature section visibility */
+  .invoice-surface [class*="Fingerprint"],
+  .invoice-surface [class*="BadgeCheck"],
+  .invoice-surface .font-mono {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Remove wrapper styling */
+  main, [class*="max-w-"] {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+  }
+}
