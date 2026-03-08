@@ -10,7 +10,6 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Banknote, TrendingUp, TrendingDown, Search, Receipt, ArrowDownLeft, ArrowUpRight, Wallet } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
 
 interface CashEntry {
   id: string;

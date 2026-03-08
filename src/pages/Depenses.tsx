@@ -4,7 +4,7 @@ import { formatCurrency } from '@/lib/moroccanUtils';
 import { useAudit } from '@/contexts/AuditContext';
 import { toast } from '@/hooks/use-toast';
 import { Plus, Trash2, Download, Receipt } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/integrations/api/client';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 
 export interface Expense {
@@ -24,12 +24,12 @@ const PIE_COLORS = ['hsl(145,63%,22%)', 'hsl(43,96%,48%)', 'hsl(200,80%,45%)', '
 function dbToApp(row: any): Expense {
   return {
     id: row.id,
-    date: row.expense_date,
+    date: row.date,
     category: row.category,
     description: row.description || '',
     amount: Number(row.amount),
-    tvaAmount: Number(row.tva_amount || 0),
-    paymentMethod: row.payment_method || 'Virement',
+    tvaAmount: Number(row.tvaAmount || 0),
+    paymentMethod: row.paymentMethod || 'Virement',
     reference: row.reference || undefined,
   };
 }
@@ -37,9 +37,9 @@ function dbToApp(row: any): Expense {
 export function useExpenses(): Expense[] {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   useEffect(() => {
-    supabase.from('expenses').select('*').then(({ data }) => {
-      if (data) setExpenses(data.map(dbToApp));
-    });
+    api.get<any[]>('/expenses')
+  .then(data => setExpenses((data || []).map(dbToApp)))
+  .catch(() => setExpenses([]));
   }, []);
   return expenses;
 }
@@ -65,8 +65,12 @@ export default function Depenses() {
   });
 
   const fetchExpenses = useCallback(async () => {
-    const { data, error } = await supabase.from('expenses').select('*').order('expense_date', { ascending: false });
-    if (!error && data) setExpenses(data.map(dbToApp));
+    try {
+  const data = await api.get<any[]>('/expenses');
+  setExpenses((data || []).map(dbToApp));
+} catch {
+  setExpenses([]);
+}
     setLoading(false);
   }, []);
 
@@ -78,14 +82,14 @@ export default function Depenses() {
     const tvaRate = parseFloat(form.tvaRate) || 0;
     const tvaAmount = amountTTC - (amountTTC / (1 + tvaRate / 100));
     const newRow = {
-      expense_date: form.date,
-      category: form.category,
-      description: form.description,
-      amount: amountTTC,
-      tva_amount: Math.round(tvaAmount * 100) / 100,
-      payment_method: form.paymentMethod,
-      reference: form.reference || null,
-    };
+  date: form.date,
+  category: form.category,
+  description: form.description,
+  amount: amountTTC,
+  tvaAmount: Math.round(tvaAmount * 100) / 100,
+  paymentMethod: form.paymentMethod,
+  reference: form.reference || null,
+};
     const tempId = `temp_${Date.now()}`;
     const optimistic: Expense = {
       id: tempId, date: form.date, category: form.category, description: form.description,
@@ -99,13 +103,13 @@ export default function Depenses() {
 
     auditLog({ action: 'Création dépense', documentType: 'Dépense', documentId: tempId, details: `${form.category}: ${form.description} — ${amountTTC} MAD` });
 
-    const { data, error } = await supabase.from('expenses').insert(newRow).select().single();
-    if (error) {
-      setExpenses(prev => prev.filter(e => e.id !== tempId));
-      toast({ title: 'Erreur', description: error.message, variant: 'destructive' });
-    } else if (data) {
-      setExpenses(prev => prev.map(e => e.id === tempId ? dbToApp(data) : e));
-    }
+    try {
+  const created = await api.post<any>('/expenses', newRow);
+  setExpenses(prev => prev.map(e => e.id === tempId ? dbToApp(created) : e));
+} catch (err: any) {
+  setExpenses(prev => prev.filter(e => e.id !== tempId));
+  toast({ title: 'Erreur', description: err?.message || "Impossible d'ajouter la dépense", variant: 'destructive' });
+}
   };
 
   const handleDelete = async (id: string) => {
@@ -114,8 +118,12 @@ export default function Depenses() {
     setExpenses(expenses.filter(e => e.id !== id));
     toast({ title: 'Dépense supprimée' });
     auditLog({ action: 'Suppression dépense', documentType: 'Dépense', documentId: id, details: deleted ? `${deleted.category}: ${deleted.description}` : '' });
-    const { error } = await supabase.from('expenses').delete().eq('id', id);
-    if (error) { setExpenses(prev); toast({ title: 'Erreur', description: error.message, variant: 'destructive' }); }
+    try {
+  await api.del(`/expenses/${id}`);
+} catch (err: any) {
+  setExpenses(prev);
+  toast({ title: 'Erreur', description: err?.message || 'Impossible de supprimer', variant: 'destructive' });
+}
   };
 
   const filtered = useMemo(() => expenses.filter(e => {

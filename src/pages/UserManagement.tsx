@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useRole, type UserRole } from '@/contexts/RoleContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/integrations/api/client';
 import { Users, Plus, Trash2, Shield, ShieldCheck, FileText, UserCheck, Loader2 } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -52,17 +52,12 @@ export default function UserManagement() {
 
     setCreating(true);
     try {
-      const { data, error } = await supabase.functions.invoke('admin-create-user', {
-        body: {
-          email: form.email.trim(),
-          password: form.password,
-          display_name: form.name.trim(),
-          role: form.role,
-        },
-      });
-
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      await api.post('/admin/users', {
+  email: form.email.trim(),
+  password: form.password,
+  name: form.name.trim(),
+  role: form.role,
+});
 
       toast({ title: 'Utilisateur créé', description: `${form.name} (${ROLE_LABELS[form.role].label})` });
       setForm({ name: '', email: '', password: '', role: 'agent' });

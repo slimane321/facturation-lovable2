@@ -1,23 +1,14 @@
-// ── SHA-256 Hashing & HMAC Signing for Invoice Chain (Art. 210 CGI) ──
-// NOTE: HMAC signing is now done SERVER-SIDE via the sign-invoice Edge Function.
-// The client only uses sha256 for local chain verification (read-only).
+import { api } from "@/integrations/api/client";
 
-import { supabase } from '@/integrations/supabase/client';
-
-// Genesis hash — the starting point of the chain for the very first invoice
-export const GENESIS_HASH = '0';
+export const GENESIS_HASH = "0";
 
 export async function sha256(message: string): Promise<string> {
   const msgBuffer = new TextEncoder().encode(message);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-/**
- * Build the hash payload for an invoice in the chain.
- * Payload = InvoiceNumber | Date | ClientICE | TotalTTC | PreviousHash
- */
 export function buildHashPayload(params: {
   invoiceNumber: string;
   date: string;
@@ -31,12 +22,9 @@ export function buildHashPayload(params: {
     params.clientICE,
     params.totalTTC.toFixed(2),
     params.previousHash,
-  ].join('|');
+  ].join("|");
 }
 
-/**
- * Compute the SHA-256 hash for an invoice (client-side, for verification only).
- */
 export async function computeInvoiceHash(params: {
   invoiceNumber: string;
   date: string;
@@ -48,10 +36,6 @@ export async function computeInvoiceHash(params: {
   return sha256(payload);
 }
 
-/**
- * Sign an invoice SERVER-SIDE via the sign-invoice Edge Function.
- * Returns { hash, signature } computed with the server-held HMAC secret.
- */
 export async function signInvoiceServerSide(params: {
   invoiceNumber: string;
   date: string;
@@ -59,74 +43,73 @@ export async function signInvoiceServerSide(params: {
   totalTTC: number;
   previousHash: string;
 }): Promise<{ hash: string; signature: string }> {
-  const { data, error } = await supabase.functions.invoke('sign-invoice', {
-    body: params,
-  });
-
-  if (error || !data?.hash || !data?.signature) {
-    throw new Error(error?.message || data?.error || 'Erreur lors de la signature serveur');
-  }
-
-  return { hash: data.hash, signature: data.signature };
+  return api.post<{ hash: string; signature: string }>("/crypto/sign-invoice", params);
 }
 
-/**
- * Get the short fingerprint displayed on the PDF (first 16 chars of hash).
- */
 export function shortFingerprint(hash: string): string {
   return hash.substring(0, 16).toUpperCase();
 }
 
-/**
- * Get the short signature code displayed on the PDF (first 12 chars of signature).
- */
 export function shortSignature(signature: string): string {
   return signature.substring(0, 12).toUpperCase();
 }
+// ─────────────────────────────────────────────────────────────
+// Chain verification used by Dashboard
+// ─────────────────────────────────────────────────────────────
 
-/**
- * Verify the integrity of an entire chain of invoices (hash + signature).
- * Returns { valid: true } or { valid: false, brokenAt: invoiceNumber }.
- */
-export async function verifyChain(
-  sortedInvoices: Array<{
-    number: string;
-    date: string;
-    clientICE: string;
-    totalTTC: number;
-    hash?: string;
-    previousHash?: string;
-    signature?: string;
-  }>
-): Promise<{ valid: boolean; brokenAt?: string; details?: string }> {
-  let previousHash = GENESIS_HASH;
+export type ChainItem = {
+  number: string;
+  date: string;
+  clientICE: string;
+  totalTTC: number;
+  hash?: string;
+  previousHash?: string;
+  signature?: string; // can't be verified client-side (HMAC secret server-side), but we can require presence if you want
+};
 
-  for (const inv of sortedInvoices) {
-    if (!inv.hash) {
-      return { valid: false, brokenAt: inv.number, details: 'Hash manquant' };
-    }
+export async function verifyChain(items: ChainItem[]): Promise<{
+  valid: boolean;
+  brokenAt?: number;   // index of the first broken item
+  reason?: string;     // human-readable reason
+}> {
+  // Keep only sealed items
+  const sealed = items.filter(i => !!i.hash);
 
-    if (inv.previousHash !== previousHash) {
-      return { valid: false, brokenAt: inv.number, details: 'Chaîne de previousHash rompue' };
-    }
+  if (sealed.length === 0) return { valid: true };
 
-    const expected = await computeInvoiceHash({
-      invoiceNumber: inv.number,
-      date: inv.date,
-      clientICE: inv.clientICE,
-      totalTTC: inv.totalTTC,
-      previousHash,
+  // Optional: ensure stable order (Dashboard already sorts, but this makes it robust)
+  const sorted = [...sealed].sort((a, b) => a.number.localeCompare(b.number));
+
+  // First item: previousHash should normally be GENESIS_HASH ("0") or empty/undefined
+  const firstPrev = sorted[0].previousHash ?? "";
+  if (!(firstPrev === GENESIS_HASH || firstPrev === "")) {
+    return { valid: false, brokenAt: 0, reason: "Premier maillon: previousHash inattendu (doit être GENESIS_HASH ou vide)." };
+  }
+
+  for (let i = 0; i < sorted.length; i++) {
+    const cur = sorted[i];
+
+    // 1) Recompute hash from fields (strong check)
+    const expectedHash = await computeInvoiceHash({
+      invoiceNumber: cur.number,
+      date: cur.date,
+      clientICE: cur.clientICE ?? "",
+      totalTTC: cur.totalTTC,
+      previousHash: cur.previousHash ?? (i === 0 ? GENESIS_HASH : sorted[i - 1].hash!),
     });
 
-    if (expected !== inv.hash) {
-      return { valid: false, brokenAt: inv.number, details: 'Hash ne correspond pas au contenu' };
+    if ((cur.hash ?? "").toLowerCase() !== expectedHash.toLowerCase()) {
+      return { valid: false, brokenAt: i, reason: "Hash invalide: le contenu ne correspond pas à l'empreinte." };
     }
 
-    // Note: HMAC signature verification is hash-only (client cannot verify HMAC without server key)
-    // The hash integrity check above is sufficient for client-side verification.
-    // Full HMAC verification should be done via the verify-chain Edge Function.
-
-    previousHash = inv.hash;
+    // 2) Verify chaining: previousHash must match previous invoice hash
+    if (i > 0) {
+      const prevHash = sorted[i - 1].hash!;
+      const curPrev = cur.previousHash ?? "";
+      if (curPrev.toLowerCase() !== prevHash.toLowerCase()) {
+        return { valid: false, brokenAt: i, reason: "Chaînage cassé: previousHash ≠ hash précédent." };
+      }
+    }
   }
 
   return { valid: true };

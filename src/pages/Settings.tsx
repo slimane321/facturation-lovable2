@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/integrations/api/client';
 import { cn } from '@/lib/utils';
 import { useSettings } from '@/contexts/SettingsContext';
 import { useData } from '@/contexts/DataContext';
@@ -518,11 +518,12 @@ function TeamTab({ users, currentUser, can, refreshUsers }: {
     }
     setCreating(true);
     try {
-      const { data, error } = await supabase.functions.invoke('admin-create-user', {
-        body: { email: form.email.trim(), password: form.password, display_name: form.name.trim(), role: form.role },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      await api.post('/admin/users', {
+  email: form.email.trim(),
+  password: form.password,
+  name: form.name.trim(),
+  role: form.role,
+});
       toast({ title: 'Utilisateur créé', description: `${form.name} (${ROLE_LABELS[form.role].label})` });
       setForm({ name: '', email: '', password: '', role: 'agent' });
       setShowAdd(false);
