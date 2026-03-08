@@ -1,59 +1,115 @@
-/**
- * AuthContext — Real Supabase Auth.
- * Provides login/logout, session state via onAuthStateChange.
- */
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import type { User, Session } from '@supabase/supabase-js';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useCallback,
+  useState,
+} from "react";
+import { api } from "@/integrations/api/client";
+import {
+  connectSocket,
+  disconnectSocket,
+  refreshSocketAuth,
+} from "@/integrations/realtime/socket";
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  createdAt: string;
+}
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  user: User | null;
-  session: Session | null;
+  user: AuthUser | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  login: (
+    email: string,
+    password: string
+  ) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
+  refresh: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+const TOKEN_KEY = "fm_token";
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+  const refresh = useCallback(async () => {
+    const token = localStorage.getItem(TOKEN_KEY);
 
-    // Then check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    if (!token) {
+      disconnectSocket();
+      setUser(null);
       setLoading(false);
-    });
+      return;
+    }
 
-    return () => subscription.unsubscribe();
+    try {
+      const me = await api.get<{ user: AuthUser }>("/auth/me");
+      setUser(me.user);
+
+      refreshSocketAuth();
+      connectSocket();
+    } catch {
+      localStorage.removeItem(TOKEN_KEY);
+      disconnectSocket();
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const login = useCallback(async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      return { success: false, error: 'Identifiants incorrects. Vérifiez votre email et mot de passe.' };
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const login = useCallback(async (email: string, password: string) => {
+    try {
+      const res = await api.post<{ token: string; user: AuthUser }>(
+        "/auth/login",
+        { email, password }
+      );
+
+      localStorage.setItem(TOKEN_KEY, res.token);
+      setUser(res.user);
+
+      refreshSocketAuth();
+      connectSocket();
+
+      return { success: true };
+    } catch (e: any) {
+      disconnectSocket();
+
+      return {
+        success: false,
+        error: e?.message || "Identifiants incorrects.",
+      };
     }
-    return { success: true };
   }, []);
 
   const logout = useCallback(async () => {
-    await supabase.auth.signOut();
+    disconnectSocket();
+    localStorage.removeItem(TOKEN_KEY);
+    setUser(null);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated: !!session, user, session, loading, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        isAuthenticated: !!user,
+        user,
+        loading,
+        login,
+        logout,
+        refresh,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -61,6 +117,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be inside AuthProvider');
+  if (!ctx) throw new Error("useAuth must be inside AuthProvider");
   return ctx;
 }

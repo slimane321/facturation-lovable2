@@ -1,11 +1,8 @@
-/**
- * NotificationContext — Manages app-wide notifications with categories,
- * read/unread state, and Supabase persistence with realtime updates.
- */
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import React, { createContext, useContext, useEffect, useCallback, useState } from "react";
+import { api } from "@/integrations/api/client";
+import { useAuth } from "@/contexts/AuthContext";
 
-export type NotifCategory = 'stock' | 'payment' | 'dgi' | 'security' | 'system';
+export type NotifCategory = "stock" | "payment" | "dgi" | "security" | "system";
 
 export interface AppNotification {
   id: string;
@@ -21,7 +18,7 @@ export interface AppNotification {
 interface NotificationContextType {
   notifications: AppNotification[];
   unreadCount: number;
-  notify: (n: Omit<AppNotification, 'id' | 'timestamp' | 'read'>) => void;
+  notify: (n: Omit<AppNotification, "id" | "timestamp" | "read">) => void;
   markRead: (id: string) => void;
   markAllRead: () => void;
   clearAll: () => void;
@@ -30,113 +27,84 @@ interface NotificationContextType {
 }
 
 const NotificationContext = createContext<NotificationContextType | null>(null);
-
 const MAX_NOTIFICATIONS = 100;
 
+function mapRow(r: any): AppNotification {
+  return {
+    id: r.id,
+    timestamp: r.createdAt ?? r.timestamp ?? new Date().toISOString(),
+    category: (r.category as NotifCategory) ?? "system",
+    title: r.title ?? "",
+    message: r.message ?? "",
+    read: !!r.read,
+    href: r.href ?? undefined,
+    icon: r.icon ?? undefined,
+  };
+}
+
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, loading } = useAuth();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [sentKeys] = useState<Set<string>>(new Set());
-  const [userId, setUserId] = useState<string | null>(null);
+  const [sentKeys] = useState<Set<string>>(() => new Set());
 
-  // Track auth state
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUserId(session?.user?.id ?? null);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUserId(session?.user?.id ?? null);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-
-  // Fetch notifications from DB
-  useEffect(() => {
-    if (!userId) {
+  const refresh = useCallback(async () => {
+    if (!isAuthenticated) {
       setNotifications([]);
       return;
     }
+    try {
+      const rows = await api.get<any[]>("/notifications");
+      setNotifications((rows || []).slice(0, MAX_NOTIFICATIONS).map(mapRow));
+    } catch {
+      setNotifications([]);
+    }
+  }, [isAuthenticated]);
 
-    const fetchNotifications = async () => {
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(MAX_NOTIFICATIONS);
+  useEffect(() => {
+    if (loading) return;
+    if (!isAuthenticated) {
+      setNotifications([]);
+      return;
+    }
+    refresh();
+  }, [loading, isAuthenticated, refresh]);
 
-      if (!error && data) {
-        setNotifications(data.map(dbToApp));
-      }
-    };
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
-    fetchNotifications();
+  const notify = useCallback(
+    async (n: Omit<AppNotification, "id" | "timestamp" | "read">) => {
+      if (!isAuthenticated) return;
+      try {
+        const row = await api.post<any>("/notifications", n);
+        setNotifications((prev) => [mapRow(row), ...prev].slice(0, MAX_NOTIFICATIONS));
+      } catch {}
+    },
+    [isAuthenticated]
+  );
 
-    // Realtime subscription
-    const channel = supabase
-      .channel('notifications-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${userId}`,
-        },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            setNotifications(prev => [dbToApp(payload.new as any), ...prev].slice(0, MAX_NOTIFICATIONS));
-          } else if (payload.eventType === 'UPDATE') {
-            const updated = dbToApp(payload.new as any);
-            setNotifications(prev => prev.map(n => n.id === updated.id ? updated : n));
-          } else if (payload.eventType === 'DELETE') {
-            const oldId = (payload.old as any).id;
-            setNotifications(prev => prev.filter(n => n.id !== oldId));
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [userId]);
-
-  const unreadCount = notifications.filter(n => !n.read).length;
-
-  const notify = useCallback(async (n: Omit<AppNotification, 'id' | 'timestamp' | 'read'>) => {
-    if (!userId) return;
-    await supabase.from('notifications').insert({
-      user_id: userId,
-      category: n.category,
-      title: n.title,
-      message: n.message,
-      href: n.href ?? null,
-      icon: n.icon ?? null,
-      read: false,
-    });
-    // Realtime will update state
-  }, [userId]);
-
-  const markRead = useCallback(async (id: string) => {
-    // Optimistic update
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-    await supabase.from('notifications').update({ read: true }).eq('id', id);
-  }, []);
+  const markRead = useCallback(
+    async (id: string) => {
+      if (!isAuthenticated) return;
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+      await api.put(`/notifications/${id}/read`).catch(() => {});
+    },
+    [isAuthenticated]
+  );
 
   const markAllRead = useCallback(async () => {
-    if (!userId) return;
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    await supabase.from('notifications').update({ read: true }).eq('user_id', userId).eq('read', false);
-  }, [userId]);
+    if (!isAuthenticated) return;
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    await api.put("/notifications/read-all").catch(() => {});
+  }, [isAuthenticated]);
 
   const clearAll = useCallback(async () => {
-    if (!userId) return;
+    if (!isAuthenticated) return;
     setNotifications([]);
-    await supabase.from('notifications').delete().eq('user_id', userId);
-  }, [userId]);
+    await api.del("/notifications").catch(() => {});
+  }, [isAuthenticated]);
 
   const hasSent = useCallback((key: string) => sentKeys.has(key), [sentKeys]);
-  const registerSent = useCallback((key: string) => { sentKeys.add(key); }, [sentKeys]);
+  const registerSent = useCallback((key: string) => void sentKeys.add(key), [sentKeys]);
 
   return (
     <NotificationContext.Provider value={{ notifications, unreadCount, notify, markRead, markAllRead, clearAll, hasSent, registerSent }}>
@@ -147,19 +115,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
 export function useNotifications() {
   const ctx = useContext(NotificationContext);
-  if (!ctx) throw new Error('useNotifications must be inside NotificationProvider');
+  if (!ctx) throw new Error("useNotifications must be inside NotificationProvider");
   return ctx;
-}
-
-function dbToApp(row: any): AppNotification {
-  return {
-    id: row.id,
-    timestamp: row.created_at,
-    category: row.category as NotifCategory,
-    title: row.title,
-    message: row.message,
-    read: row.read,
-    href: row.href ?? undefined,
-    icon: row.icon ?? undefined,
-  };
 }

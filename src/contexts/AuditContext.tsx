@@ -1,9 +1,7 @@
-/**
- * AuditContext — Append-only audit trail persisted in Supabase audit_logs table.
- */
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { useRole } from '@/contexts/RoleContext';
-import { supabase } from '@/integrations/supabase/client';
+import React, { createContext, useContext, useEffect, useCallback, useState } from "react";
+import { useRole } from "@/contexts/RoleContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { api } from "@/integrations/api/client";
 
 export interface AuditEntry {
   id: string;
@@ -20,75 +18,88 @@ export interface AuditEntry {
 
 interface AuditContextType {
   logs: AuditEntry[];
-  log: (entry: Omit<AuditEntry, 'id' | 'timestamp' | 'user'>) => void;
+  log: (entry: Omit<AuditEntry, "id" | "timestamp" | "user">) => void;
 }
 
 const AuditContext = createContext<AuditContextType | null>(null);
 
-function dbRowToAuditEntry(row: any): AuditEntry {
+function mapRow(r: any): AuditEntry {
   return {
-    id: row.id,
-    timestamp: row.created_at,
-    user: row.user_name || '',
-    action: row.action,
-    documentType: row.document_type,
-    documentId: row.document_id || '',
-    documentNumber: row.document_number || undefined,
-    details: row.details || undefined,
-    oldValue: row.old_value ? JSON.stringify(row.old_value) : undefined,
-    newValue: row.new_value ? JSON.stringify(row.new_value) : undefined,
+    id: r.id,
+    timestamp: r.createdAt ?? r.timestamp ?? new Date().toISOString(),
+    user: r.userName ?? r.user ?? "Utilisateur",
+    action: r.action,
+    documentType: r.documentType,
+    documentId: r.documentId ?? "",
+    documentNumber: r.documentNumber ?? undefined,
+    details: r.details ?? undefined,
+    oldValue: r.oldValue ? JSON.stringify(r.oldValue) : undefined,
+    newValue: r.newValue ? JSON.stringify(r.newValue) : undefined,
   };
 }
 
 export function AuditProvider({ children }: { children: React.ReactNode }) {
-  const [logs, setLogs] = useState<AuditEntry[]>([]);
+  const { isAuthenticated, loading } = useAuth();
   const { currentUser } = useRole();
+  const [logs, setLogs] = useState<AuditEntry[]>([]);
+
+  const refresh = useCallback(async () => {
+    if (!isAuthenticated) {
+      setLogs([]);
+      return;
+    }
+    try {
+      const rows = await api.get<any[]>("/audit");
+      setLogs((rows || []).map(mapRow));
+    } catch {
+      setLogs([]);
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
-    supabase
-      .from('audit_logs')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(500)
-      .then(({ data }) => {
-        if (data) setLogs(data.map(dbRowToAuditEntry));
-      });
-  }, []);
+    if (loading) return;
+    if (!isAuthenticated) {
+      setLogs([]);
+      return;
+    }
+    refresh();
+  }, [loading, isAuthenticated, refresh]);
 
-  const log = useCallback((entry: Omit<AuditEntry, 'id' | 'timestamp' | 'user'>) => {
-    const tempEntry: AuditEntry = {
-      ...entry,
-      id: `audit_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      timestamp: new Date().toISOString(),
-      user: currentUser.name,
-    };
-    setLogs(prev => [tempEntry, ...prev]);
+  const log = useCallback(
+    (entry: Omit<AuditEntry, "id" | "timestamp" | "user">) => {
+      // Si pas connecté, on garde seulement en local (optionnel)
+      const temp: AuditEntry = {
+        ...entry,
+        id: `audit_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        timestamp: new Date().toISOString(),
+        user: currentUser.name,
+      };
+      setLogs((prev) => [temp, ...prev]);
 
-    supabase.from('audit_logs').insert({
-      user_name: currentUser.name,
-      action: entry.action,
-      document_type: entry.documentType,
-      document_id: entry.documentId || null,
-      document_number: entry.documentNumber || null,
-      details: entry.details || null,
-      old_value: entry.oldValue ? JSON.parse(entry.oldValue) : null,
-      new_value: entry.newValue ? JSON.parse(entry.newValue) : null,
-    }).select().single().then(({ data }) => {
-      if (data) {
-        setLogs(prev => prev.map(l => l.id === tempEntry.id ? dbRowToAuditEntry(data) : l));
-      }
-    });
-  }, [currentUser.name]);
+      if (!isAuthenticated) return;
 
-  return (
-    <AuditContext.Provider value={{ logs, log }}>
-      {children}
-    </AuditContext.Provider>
+      const payload: any = {
+  action: entry.action,
+  documentType: entry.documentType,
+};
+
+if (entry.documentId) payload.documentId = entry.documentId;
+if (entry.documentNumber) payload.documentNumber = entry.documentNumber;
+if (entry.details) payload.details = entry.details;
+
+if (entry.oldValue) payload.oldValue = JSON.parse(entry.oldValue);
+if (entry.newValue) payload.newValue = JSON.parse(entry.newValue);
+
+api.post("/audit", payload).catch(() => {});
+    },
+    [currentUser.name, isAuthenticated]
   );
+
+  return <AuditContext.Provider value={{ logs, log }}>{children}</AuditContext.Provider>;
 }
 
 export function useAudit() {
   const ctx = useContext(AuditContext);
-  if (!ctx) throw new Error('useAudit must be inside AuditProvider');
+  if (!ctx) throw new Error("useAudit must be inside AuditProvider");
   return ctx;
 }
