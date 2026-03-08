@@ -1,0 +1,300 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Char(36)
+  email        String   @unique
+  passwordHash String
+  name         String?
+  role         String   @default("agent") // admin | agent | comptable
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model CompanySettings {
+  id            Int      @id @default(autoincrement())
+  name          String
+  ice           String
+  ifNumber      String
+  rc            String
+  patente       String
+  cnss          String
+  address       String
+  city          String
+  tel           String
+  email         String
+  website       String?
+  rib           String
+  bank          String
+  logoUrl       String?
+  capitalSocial String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ClosedFiscalYear {
+  year       Int    @id
+  masterHash String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Client {
+  id           String   @id @default(uuid()) @db.Char(36)
+  clientType   String   // company | individual
+  businessName String
+  ice          String
+  ifNumber     String
+  rc           String?
+  address      String
+  city         String
+  email        String?
+  phone        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoices Invoice[]
+}
+
+model Product {
+  id                String   @id @default(uuid()) @db.Char(36)
+  reference         String   @unique
+  name              String
+  description       String?
+  unitPrice         Decimal  @db.Decimal(12,2)
+  vatRate           Int
+  unit              String?
+  stock             Int      @default(0)
+  minStockThreshold Int      @default(5)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Invoice {
+  id                    String   @id @default(uuid()) @db.Char(36)
+  number                String
+  invoiceDate            String
+  dueDate               String
+  clientId              String   @db.Char(36)
+  status                String   // draft | pending | validated | paid | cancelled | avoir
+  notes                 String?
+  paymentMethod         String?
+  paymentRef            String?
+  subtotalHT            Decimal  @db.Decimal(12,2)
+  totalTVA              Decimal  @db.Decimal(12,2)
+  totalTTC              Decimal  @db.Decimal(12,2)
+  timbre                Decimal  @db.Decimal(12,2) @default(0)
+  totalPaid             Decimal  @db.Decimal(12,2) @default(0)
+  hash                  String?
+  previousHash          String?
+  signature             String?
+  blId                  String?
+  originalInvoiceId     String?  @db.Char(36)
+  hasAvoir              Boolean  @default(false)
+  avoirId               String?  @db.Char(36)
+  dgiStatus             String?
+  dgiRegistrationNumber String?
+  signedPdfUrl          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client   Client        @relation(fields: [clientId], references: [id])
+  lines    InvoiceLine[]
+  payments Payment[]
+}
+
+model InvoiceLine {
+  id          String  @id @default(uuid()) @db.Char(36)
+  invoiceId   String  @db.Char(36)
+  description String
+  quantity    Decimal @db.Decimal(12,2)
+  unitPrice   Decimal @db.Decimal(12,2)
+  vatRate     Int
+  sortOrder   Int
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+}
+
+model Payment {
+  id          String   @id @default(uuid()) @db.Char(36)
+  invoiceId   String   @db.Char(36)
+  amount      Decimal  @db.Decimal(12,2)
+  paymentDate String
+  method      String
+  reference   String?
+
+  createdAt DateTime @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+}
+
+model StockMovement {
+  id          String   @id @default(uuid()) @db.Char(36)
+  productId   String   @db.Char(36)
+  movementDate DateTime @default(now())
+  type        String   // sale | purchase | return | manual
+  quantity    Int
+  newBalance  Int
+  documentRef String?
+}
+
+model AuditLog {
+  id            String   @id @default(uuid()) @db.Char(36)
+  createdAt     DateTime @default(now())
+  userName      String
+  action        String
+  documentType  String
+  documentId    String?
+  documentNumber String?
+  details       String?
+  oldValue      Json?
+  newValue      Json?
+}
+
+model Notification {
+  id        String   @id @default(uuid()) @db.Char(36)
+  createdAt DateTime @default(now())
+  userId    String   @db.Char(36)
+  category  String
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  href      String?
+  icon      String?
+}
+
+model Expense {
+  id            String   @id @default(uuid()) @db.Char(36)
+  date          String
+  category      String
+  description   String
+  amount        Decimal  @db.Decimal(12,2)
+  tvaAmount     Decimal  @db.Decimal(12,2) @default(0)
+  paymentMethod String
+  reference     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Devis {
+  id                String     @id @default(uuid()) @db.Char(36)
+  number            String
+  date              String
+  validUntil        String
+  clientId          String     @db.Char(36)
+  status            String
+  notes             String?
+  paymentMethod     String?
+  paymentRef        String?
+  isConverted       Boolean    @default(false)
+  convertedToBCId   String?    @db.Char(36)
+  convertedToInvoiceId String? @db.Char(36)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  lines             DevisLine[]
+}
+
+model DevisLine {
+  id          String  @id @default(uuid()) @db.Char(36)
+  devisId     String  @db.Char(36)
+  description String
+  quantity    Decimal @db.Decimal(12,2)
+  unitPrice   Decimal @db.Decimal(12,2)
+  vatRate     Int
+  sortOrder   Int
+  devis       Devis   @relation(fields: [devisId], references: [id], onDelete: Cascade)
+}
+
+model BonCommande {
+  id              String   @id @default(uuid()) @db.Char(36)
+  number          String
+  date            String
+  clientId        String   @db.Char(36)
+  status          String
+  devisId         String?  @db.Char(36)
+  notes           String?
+  paymentMethod   String?
+  paymentRef      String?
+  isConverted     Boolean  @default(false)
+  convertedToBLId String?  @db.Char(36)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  lines           BCLine[]
+}
+
+model BCLine {
+  id          String      @id @default(uuid()) @db.Char(36)
+  bcId        String      @db.Char(36)
+  description String
+  quantity    Decimal     @db.Decimal(12,2)
+  unitPrice   Decimal     @db.Decimal(12,2)
+  vatRate     Int
+  sortOrder   Int
+  bc          BonCommande @relation(fields: [bcId], references: [id], onDelete: Cascade)
+}
+
+model BonLivraison {
+  id                 String   @id @default(uuid()) @db.Char(36)
+  number             String
+  date               String
+  clientId           String   @db.Char(36)
+  status             String
+  bcId               String?  @db.Char(36)
+  devisId            String?  @db.Char(36)
+  notes              String?
+  paymentMethod      String?
+  paymentRef         String?
+  isConverted        Boolean  @default(false)
+  convertedToInvoiceId String? @db.Char(36)
+  sourceInvoiceId    String?  @db.Char(36)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  lines              BLLine[]
+}
+
+model BLLine {
+  id          String       @id @default(uuid()) @db.Char(36)
+  blId        String       @db.Char(36)
+  description String
+  quantity    Decimal      @db.Decimal(12,2)
+  unitPrice   Decimal      @db.Decimal(12,2)
+  vatRate     Int
+  sortOrder   Int
+  bl          BonLivraison @relation(fields: [blId], references: [id], onDelete: Cascade)
+}
+
+model Achat {
+  id                  String     @id @default(uuid()) @db.Char(36)
+  supplierInvoiceNumber String
+  supplierName         String
+  supplierICE          String?
+  date                 String
+  dueDate              String
+  status               String
+  notes                String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  lines                AchatLine[]
+}
+
+model AchatLine {
+  id          String  @id @default(uuid()) @db.Char(36)
+  achatId     String  @db.Char(36)
+  description String
+  quantity    Decimal @db.Decimal(12,2)
+  unitPrice   Decimal @db.Decimal(12,2)
+  vatRate     Int
+  sortOrder   Int
+  achat       Achat   @relation(fields: [achatId], references: [id], onDelete: Cascade)
+}
